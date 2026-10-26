@@ -7,13 +7,17 @@ import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+
 import ru.pologova.SpringBootLab2.enums.Codes;
 import ru.pologova.SpringBootLab2.enums.ErrorCodes;
 import ru.pologova.SpringBootLab2.enums.ErrorMessages;
 import ru.pologova.SpringBootLab2.exception.UnsupportedCodeException;
 import ru.pologova.SpringBootLab2.model.Request;
 import ru.pologova.SpringBootLab2.model.Response;
+import ru.pologova.SpringBootLab2.service.BonusCalculationService;
+import ru.pologova.SpringBootLab2.service.ModifyRequestService;
 import ru.pologova.SpringBootLab2.service.ModifyResponseService;
+import ru.pologova.SpringBootLab2.service.RequestSenderService;
 import ru.pologova.SpringBootLab2.service.ValidationService;
 
 @Slf4j
@@ -23,17 +27,26 @@ public class MyController {
     private final ValidationService validationService;
     private final ModifyResponseService modifyResponseServiceUid;
     private final ModifyResponseService modifyResponseServiceDate;
+    private final ModifyRequestService modifyRequestService;
+    private final RequestSenderService requestSenderService;
+    private final BonusCalculationService bonusCalculationService;
 
     public MyController(
             ValidationService validationService,
             @Qualifier("ModifyResponseServiceUid")
             ModifyResponseService modifyResponseServiceUid,
             @Qualifier("ModifyResponseServiceDate")
-            ModifyResponseService modifyResponseServiceDate) {
+            ModifyResponseService modifyResponseServiceDate,
+            ModifyRequestService modifyRequestService,
+            RequestSenderService requestSenderService,
+            BonusCalculationService bonusCalculationService) {
 
         this.validationService = validationService;
         this.modifyResponseServiceUid = modifyResponseServiceUid;
         this.modifyResponseServiceDate = modifyResponseServiceDate;
+        this.modifyRequestService = modifyRequestService;
+        this.requestSenderService = requestSenderService;
+        this.bonusCalculationService = bonusCalculationService;
     }
 
     @PostMapping("/feedback")
@@ -41,18 +54,14 @@ public class MyController {
             @Valid @RequestBody Request request,
             BindingResult bindingResult) {
 
-        log.info("Получен request: {}", request);
+        long startTime = System.currentTimeMillis();
+
+        log.info("Получен Request: {}", request);
 
         validationService.validate(bindingResult);
 
-        log.info("Request успешно прошел валидацию");
-
         if ("123".equals(request.getUid())) {
-            log.error(
-                    "UnsupportedCodeException: uid = {}",
-                    request.getUid()
-            );
-
+            log.error("UnsupportedCodeException: uid = 123");
             throw new UnsupportedCodeException(
                     "Не поддерживаемый код"
             );
@@ -67,23 +76,18 @@ public class MyController {
         response.setErrorCode(ErrorCodes.EMPTY);
         response.setErrorMessage(ErrorMessages.EMPTY);
 
-        log.info("Первоначальный response: {}", response);
+        bonusCalculationService.calculateBonuses(request, response);
 
         response = modifyResponseServiceUid.modify(response);
-
-        log.info(
-                "Response после изменения operationUid: {}",
-                response
-        );
-
         response = modifyResponseServiceDate.modify(response);
 
-        log.info(
-                "Response после изменения systemTime: {}",
-                response
-        );
+        log.info("Response с рассчитанными премиями: {}", response);
 
-        log.info("Итоговый response: {}", response);
+        request = modifyRequestService.modify(request);
+
+        requestSenderService.send(request, startTime);
+
+        log.info("Request успешно передан Сервису 2");
 
         return response;
     }
